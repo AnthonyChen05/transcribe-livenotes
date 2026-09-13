@@ -1,0 +1,33 @@
+{
+  "name": "teleprompt-livenotes",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Local live speech-to-text notes app: whisper.cpp transcription + Ollama AI notes, fully offline.",
+  "license": "MIT",
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "check": "node scripts/check.mjs",
+    "predev": "node scripts/check.mjs",
+    "dev": "concurrently -k -n server,client -c blue,green \"node server/index.js\" \"vite\"",
+    "prestart": "node scripts/check.mjs",
+    "build": "vite build",
+    "start": "npm run build && node server/index.js",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "marked": "^12.0.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "vite": "^5.4.11"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
