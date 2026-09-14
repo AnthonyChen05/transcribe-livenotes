@@ -1,6 +1,7 @@
 // Background "live notes" job: watches the transcript and periodically asks
-// Ollama for the NEW points to append to the auto-notes summary. The bullets
-// are SERVER-OWNED and live in their own file (data/autonotes.md) — never
+// Ollama for the NEW points to append to the auto-notes summary. Each note
+// (recording session) owns one instance; its bullets are SERVER-OWNED and
+// live in their own file (data/sessions/<slug>/autonotes.md) — never
 // inside the user's notes document. The UI renders the two side by side, but
 // they cannot contaminate each other, so the accumulated bullets can never
 // pick up client-generated headings or manual edits. The section is
@@ -155,7 +156,8 @@ export function createAutoNotes({
     start() {
       // Never let scheduled ticks pile up behind a slow or hung job — if one
       // is already queued, skip this beat. The next interval fires 20 s later,
-      // so nothing is lost; only the backlog spam disappears.
+      // so nothing is lost; only the backlog spam disappears. Also idempotent:
+      // every client join calls this, only the first sets the timer.
       if (!timer)
         timer = setInterval(() => {
           if (tickQueued) return;
@@ -164,6 +166,17 @@ export function createAutoNotes({
             tickQueued = false;
           });
         }, TICK_MS);
+    },
+    /**
+     * Stop the ticking interval — called when a note's last viewer leaves.
+     * In-flight jobs finish and persist; the instance keeps its consumption
+     * state so the next viewer's start() resumes without re-deriving bullets.
+     */
+    stop() {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
     },
     triggerNow() {
       enqueue(() => tick({ force: true }));

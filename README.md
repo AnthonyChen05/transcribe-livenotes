@@ -2,8 +2,9 @@
 
 **Local-first live transcription + AI-assisted markdown notes.** Speak on the left, take notes on the right — fully offline, nothing leaves your machine.
 
+- 🗂 **Multi-note dashboard** — every note gets its own page at `/<name>`; the dashboard at `/` lists them all (rename/delete in place). Each note keeps its own transcript, notes document, AI bullets, auto-notes toggle and active profile.
 - 🗣 **Live transcription** — whisper.cpp runs locally; voice-activity-detected utterances transcribe within seconds, timestamped with when the words were *spoken*. Backlogged speech is merged into single whisper windows so long monologues catch up several × faster than real time.
-- 📝 **Live notes** — a background Ollama job distills the transcript into bullet points as you talk. They live in their own file (`data/autonotes.md`) and are shown above your editor — the AI never modifies your document. Regenerate the whole set from the full transcript anytime with **⟳⟳ Rebuild all**.
+- 📝 **Live notes** — a background Ollama job distills the transcript into bullet points as you talk. They live in their own file (`data/sessions/<name>/autonotes.md`) and are shown above your editor — the AI never modifies your document. Regenerate the whole set from the full transcript anytime with **⟳⟳ Rebuild all**.
 - ✍️ **Markdown editor** — live editing with rendered preview, autosaved to disk. Panes are resizable (drag the divider) and the editor can be hidden for a transcript + AI-notes view; both choices are remembered.
 - 🧰 **AI toolbar** — summarize the transcript, extract action items, polish or re-read selected text. Results stream token-by-token into your notes at the cursor.
 - 👤 **Profiles** — named event presets (topic, speaker accents, style guide) that steer every AI prompt.
@@ -46,7 +47,7 @@ Windows x64 is the supported path (whisper binaries are prebuilt). Full prerequi
 | `scripts/setup.mjs` | One-time download of whisper.cpp release binaries + the ggml model |
 | `scripts/check.mjs` | The setup doctor behind `npm run check` (and every `dev`/`start`) |
 | `bin/`, `models/` | whisper-server.exe and the models (gitignored, downloaded) |
-| `data/` | Your notes (`notes.md`), the AI's bullets (`autonotes.md`), transcript, `latest.txt` mirror, profiles, config (gitignored) |
+| `data/` | Your notes: `sessions.json` index plus a `sessions/<name>/` directory per note (`notes.md`, `autonotes.md`, `transcript.md`, `latest.txt`), plus profiles and global config (gitignored) |
 
 ## Performance notes
 

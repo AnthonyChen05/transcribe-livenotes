@@ -1,6 +1,9 @@
-// Singleton WebSocket to the Node server with auto-reconnect.
+// Singleton WebSocket to the Node server with auto-reconnect. The connection
+// is bound to one note via ?session=<slug> — the server rejects unknown
+// notes, so a typo'd URL simply never connects (the page shows "not found").
 let ws = null;
 let reconnectTimer = null;
+let currentSession = null; // remembered so reconnects re-bind the same note
 const handlers = new Set();
 
 export function onMessage(fn) {
@@ -12,10 +15,11 @@ function dispatch(msg) {
   for (const fn of handlers) fn(msg);
 }
 
-export function connect() {
+export function connect(session) {
+  if (session !== undefined) currentSession = session;
   if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  ws = new WebSocket(`${proto}//${location.host}/ws`);
+  ws = new WebSocket(`${proto}//${location.host}/ws?session=${encodeURIComponent(currentSession || '')}`);
   ws.binaryType = 'arraybuffer';
   ws.onopen = () => dispatch({ t: 'connected' });
   ws.onmessage = (e) => {
@@ -24,7 +28,7 @@ export function connect() {
   ws.onclose = () => {
     dispatch({ t: 'disconnected' });
     clearTimeout(reconnectTimer);
-    reconnectTimer = setTimeout(connect, 1000);
+    reconnectTimer = setTimeout(() => connect(), 1000);
   };
 }
 

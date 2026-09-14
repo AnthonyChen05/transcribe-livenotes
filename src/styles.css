@@ -738,3 +738,110 @@ body.split-dragging {
   background: var(--accent-press);
   border-color: var(--accent-press);
 }
+
+/* ------------------------------------------------------------- dashboard */
+.dashboard {
+  flex: 1;
+  overflow: auto;
+  padding: 22px 26px 40px;
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+}
+
+.dash-sub {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.new-note {
+  display: flex;
+  gap: 8px;
+  margin: 4px 0 22px;
+}
+
+.new-note input {
+  flex: 1;
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+.new-note input:focus {
+  outline: 2px solid #ecd5ca;
+  border-color: var(--accent);
+}
+
+.dash-hint {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.note-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 14px;
+}
+
+.note-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.note-card:hover {
+  border-color: #cfcbbf;
+  box-shadow: 0 4px 14px rgba(31, 30, 29, 0.08);
+}
+
+.note-card h3 {
+  font-family: var(--serif);
+  font-size: 15.5px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.note-meta {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.note-preview {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.note-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 6px;
+}
+
+/* note title shown in the topbar of a note's page */
+.session-name {
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-right: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 30vw;
+}

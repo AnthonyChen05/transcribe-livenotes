@@ -4,10 +4,115 @@ import { useRecorder } from './hooks/useRecorder.js';
 import TranscriptPane from './components/TranscriptPane.jsx';
 import NotesPane from './components/NotesPane.jsx';
 import ProfileManager from './components/ProfileManager.jsx';
+import Dashboard from './components/Dashboard.jsx';
+
+// Routing is done by full page loads — no client router. "/" is the dashboard
+// listing every note; "/<slug>" is that note's live-notes page. Navigating
+// between them is always location.assign, so the URL is the single source of
+// truth for which note a tab is bound to.
+const PATH = window.location.pathname.replace(/\/+$/, '') || '/';
+const SLUG = PATH === '/' ? '' : decodeURIComponent(PATH.split('/')[1]);
 
 export default function App() {
+  if (!SLUG) return <Dashboard />;
+  return <SessionGate slug={SLUG} />;
+}
+
+/**
+ * Check that the URL's note actually exists before loading the live app.
+ * Unknown notes get a "create it?" screen instead of a half-connected page
+ * (the server refuses to auto-create on a typed URL).
+ */
+function SessionGate({ slug }) {
+  const [state, setState] = useState('loading'); // loading | found | missing | unreachable
+  const [title, setTitle] = useState('');
+  useEffect(() => {
+    let alive = true;
+    fetch(`/api/sessions/${encodeURIComponent(slug)}`)
+      .then((r) => (r.ok ? r.json() : r.status === 404 ? null : Promise.reject(new Error('bad status'))))
+      .then((d) => {
+        if (!alive) return;
+        if (d) {
+          setTitle(d.session.title);
+          setState('found');
+        } else {
+          setState('missing');
+        }
+      })
+      .catch(() => alive && setState('unreachable'));
+    return () => {
+      alive = false;
+    };
+  }, [slug]);
+  if (state === 'loading') return <Splash text="loading…" />;
+  if (state === 'unreachable') return <Splash text="Could not reach the server — is it running? (npm run dev)" link />;
+  if (state === 'missing') return <NotFound slug={slug} />;
+  return <SessionApp slug={slug} initialTitle={title} />;
+}
+
+function Splash({ text, link }) {
+  return (
+    <div className="app">
+      <header className="topbar">
+        <h1>🎙 Live Notes</h1>
+      </header>
+      <div className="empty-state">
+        <p>{text}</p>
+        {link && (
+          <p>
+            <a className="btn" href="/">← All notes</a>
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** The URL names a note that doesn't exist — offer to create it right there. */
+function NotFound({ slug }) {
+  const pretty = slug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  const [busy, setBusy] = useState(false);
+  const create = async () => {
+    setBusy(true);
+    try {
+      const res = await fetch('/api/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: pretty }),
+      });
+      if (!res.ok) throw new Error('create failed');
+      const d = await res.json();
+      window.location.assign('/' + encodeURIComponent(d.session.slug));
+    } catch {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="app">
+      <header className="topbar">
+        <h1>🎙 Live Notes</h1>
+      </header>
+      <div className="empty-state">
+        <p>
+          <strong>“{pretty}”</strong> doesn't exist yet.
+        </p>
+        <p>
+          <button className="btn primary" onClick={create} disabled={busy}>
+            {busy ? 'creating…' : 'Create this note'}
+          </button>
+        </p>
+        <p>
+          <a className="btn" href="/">← All notes</a>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function SessionApp({ slug, initialTitle }) {
   const [notes, setNotes] = useState('');
   const [autoNotes, setAutoNotes] = useState({ content: '', updated: null, busy: false });
+  const [sessionTitle, setSessionTitle] = useState(initialTitle);
   // Pane layout, remembered across reloads: divider position (left pane %)
   // and whether the notes pane is collapsed.
   const [splitPct, setSplitPct] = useState(() => {
@@ -36,33 +141,36 @@ export default function App() {
   const saveTimer = useRef(null);
 
   // ------------------------------------------------------------------ notes
-  const applyNotes = useCallback((next, { immediate = false } = {}) => {
-    notesRef.current = next;
-    setNotes(next);
-    if (next === savedRef.current) {
-      setSaveState('saved');
+  const applyNotes = useCallback(
+    (next, { immediate = false } = {}) => {
+      notesRef.current = next;
+      setNotes(next);
+      if (next === savedRef.current) {
+        setSaveState('saved');
+        clearTimeout(saveTimer.current);
+        return;
+      }
       clearTimeout(saveTimer.current);
-      return;
-    }
-    clearTimeout(saveTimer.current);
-    if (!immediate) setSaveState('dirty');
-    saveTimer.current = setTimeout(
-      () => {
-        setSaveState('saving');
-        fetch('/api/notes', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: notesRef.current }),
-        })
-          .then(() => {
-            savedRef.current = notesRef.current;
-            setSaveState('saved');
+      if (!immediate) setSaveState('dirty');
+      saveTimer.current = setTimeout(
+        () => {
+          setSaveState('saving');
+          fetch(`/api/notes?session=${encodeURIComponent(slug)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: notesRef.current }),
           })
-          .catch(() => setSaveState('error'));
-      },
-      immediate ? 0 : 700
-    );
-  }, []);
+            .then(() => {
+              savedRef.current = notesRef.current;
+              setSaveState('saved');
+            })
+            .catch(() => setSaveState('error'));
+        },
+        immediate ? 0 : 700
+      );
+    },
+    [slug]
+  );
 
   const onNotesChange = useCallback(
     (text, opts) => {
@@ -81,13 +189,14 @@ export default function App() {
 
   // ---------------------------------------------------------------- socket
   useEffect(() => {
-    connect();
+    connect(slug);
     const off = onMessage((msg) => {
       switch (msg.t) {
         case 'init':
           savedRef.current = msg.notes;
           notesRef.current = msg.notes;
           setNotes(msg.notes);
+          setSessionTitle(msg.title);
           setAutoNotes(msg.autoNotes || { content: '', updated: null });
           setTranscript(msg.transcript);
           setConfig(msg.config);
@@ -153,6 +262,14 @@ export default function App() {
           setAiBusy(null);
           setError(msg.message);
           break;
+        case 'session-renamed':
+          // someone renamed this note from another tab
+          setSessionTitle(msg.title);
+          break;
+        case 'session-deleted':
+          // the note was deleted elsewhere — back to the dashboard
+          window.location.assign('/');
+          break;
         case 'connected':
           setConnected(true);
           break;
@@ -164,13 +281,17 @@ export default function App() {
       }
     });
     return off;
-  }, [applyNotes]);
+  }, [applyNotes, slug]);
 
   useEffect(() => {
     if (!error) return;
     const timer = setTimeout(() => setError(null), 9000);
     return () => clearTimeout(timer);
   }, [error]);
+
+  useEffect(() => {
+    document.title = sessionTitle ? `${sessionTitle} — Live Notes` : 'Live Notes';
+  }, [sessionTitle]);
 
   // -------------------------------------------------------------- recorder
   const { status: recStatus, error: recError, start, stop } = useRecorder({
@@ -246,7 +367,9 @@ export default function App() {
 
   const clearTranscript = () => {
     if (!window.confirm('Clear the transcript? Your notes are kept.')) return;
-    fetch('/api/transcript/clear', { method: 'POST' }).catch(() => setError('Could not clear transcript.'));
+    fetch(`/api/transcript/clear?session=${encodeURIComponent(slug)}`, { method: 'POST' }).catch(() =>
+      setError('Could not clear transcript.')
+    );
   };
 
   // ------------------------------------------------------ pane layout
@@ -319,7 +442,15 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
+        <a className="btn" href="/" title="Back to all notes">
+          ← All notes
+        </a>
         <h1>🎙 Live Notes</h1>
+        {sessionTitle && (
+          <span className="session-name" title={sessionTitle}>
+            {sessionTitle}
+          </span>
+        )}
         <button
           className={`btn record ${recording ? 'recording' : recStatus === 'starting' ? 'starting' : ''}`}
           onClick={recording ? stop : start}

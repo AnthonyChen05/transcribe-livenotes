@@ -1,6 +1,6 @@
 {
   "name": "teleprompt-livenotes",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "description": "Local live speech-to-text notes app: whisper.cpp transcription + Ollama AI notes, fully offline.",
