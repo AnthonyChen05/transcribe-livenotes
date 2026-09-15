@@ -16,7 +16,7 @@
 
 ```bash
 # 事前需求：Node.js >= 20（nodejs.org）與 Ollama（ollama.com/download）
-ollama pull qwen2.5:3b      # 推薦的 CPU 小型模型 — 詳見 SETUP.md
+ollama pull qwen2.5:3b      # 推薦的 CPU 小型模型 — 詳見 SETUP.zh-TW.md
 
 npm install
 npm run setup               # 一次性：whisper.cpp 執行檔 + 模型（約 65 MB）
@@ -25,7 +25,7 @@ npm run dev                 # → http://localhost:5173
 
 `npm run dev` 會先執行內建的**環境檢查**（也可單獨用 `npm run check` 執行）：它會驗證 Node、whisper 執行檔、Whisper 模型、Ollama 與其模型、資料目錄及連接埠 — 並印出能修正缺失項目的確切指令，而不是莫名其妙地失敗。它也會防止重複啟動：如果 Live Notes 已在執行，它會告訴你它正在哪裡執行。
 
-正式支援的平台是 Windows x64（whisper 執行檔為預先建置版本）。完整的事前需求、設定與疑難排解請見 **[SETUP.md](SETUP.md)**。
+正式支援的平台是 Windows x64（whisper 執行檔為預先建置版本）。完整的事前需求、設定與疑難排解請見 **[SETUP.zh-TW.md](SETUP.zh-TW.md)**。
 
 ## 運作原理
 
@@ -55,7 +55,7 @@ npm run dev                 # → http://localhost:5173
 
 - 轉錄速度隨 CPU 核心數提升。推薦模型 `ggml-large-v3-turbo-q5_0`（547 MB）在現代筆記型電腦的 CPU 上可達到甚至超越即時速度，且準確度遠優於安裝時預設的 57 MB 模型 — 升級只需執行 `npm run setup -- ggml-large-v3-turbo-q5_0.bin` 再重新啟動。
 - AI 功能的速度取決於你所用的 Ollama 模型。在 CPU 上，3–4B 的模型能快速產生摘要；8–12B 也可行，但耗時較久。
-- `OLLAMA_NUM_THREADS` 會限制 Ollama 的 CPU 執行緒數（預設：核心數 / 2 − 2），讓即時轉錄在 AI 工作執行期間仍保有自己的核心 — 詳見 SETUP.md。
+- `OLLAMA_NUM_THREADS` 會限制 Ollama 的 CPU 執行緒數（預設：核心數 / 2 − 2），讓即時轉錄在 AI 工作執行期間仍保有自己的核心 — 詳見 SETUP.zh-TW.md。
 
 ## 授權
 

@@ -1,5 +1,7 @@
 # Setup Guide — Live Notes
 
+**English** | [繁體中文](SETUP.zh-TW.md)
+
 A fully local, offline web app: live speech-to-text on the left, an AI-assisted markdown editor on the right.
 Every note is its own page at `/<name>` — the dashboard at `/` organizes them all.
 Transcription runs through **whisper.cpp**, text processing through **Ollama**. Nothing leaves your machine.
