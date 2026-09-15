@@ -8,12 +8,59 @@
 // append-only: it grows as the session progresses and is never rewritten.
 // All Ollama work is funneled through `enqueue` so on-demand commands and
 // this job never run concurrently (the local model is single-tenant anyway).
-import { chatStream, autoNotesMessages, rebuildAutoNotesMessages } from './ollama.js';
+import {
+  chatStream,
+  autoNotesMessages,
+  rebuildAutoNotesMessages,
+  mapAutoNotesMessages,
+  mergeAutoNotesMessages,
+} from './ollama.js';
 
 const TICK_MS = 20000;
 const MIN_NEW_CHARS = 250; // new transcript material required between runs
 const MAX_NEW_MATERIAL = 6000; // cap on the transcript chunk sent per update
-const MAX_REBUILD_MATERIAL = 12000; // cap on the transcript for a full rebuild
+const MAP_CHUNK_CHARS = 12000; // transcript per prompt in a rebuild; longer sessions are rebuilt map-reduce
+const MERGE_INPUT_CHARS = 12000; // max chars of partial bullet lists per merge prompt
+// Ollama silently truncates the head of any prompt that exceeds the model's
+// context window. The largest auto-notes prompt (~20k chars ≈ 5–6k tokens)
+// overflows the ~4096 default, so raise the window; 8192 leaves room for the
+// reply too. Override with OLLAMA_NUM_CTX if a model can't hold it.
+const NUM_CTX = Number(process.env.OLLAMA_NUM_CTX) || 8192;
+
+/** Split the transcript into map-sized chunks, breaking between utterances. */
+function chunkTranscript(text, cap = MAP_CHUNK_CHARS) {
+  if (text.length <= cap) return [text];
+  const chunks = [];
+  let start = 0;
+  while (start < text.length) {
+    let end = Math.min(start + cap, text.length);
+    if (end < text.length) {
+      const nl = text.lastIndexOf('\n', end);
+      if (nl > start) end = nl + 1; // break between utterances, not mid-line
+    }
+    chunks.push(text.slice(start, end));
+    start = end;
+  }
+  return chunks;
+}
+
+/** Group items into batches whose total size stays under cap (merge rounds). */
+function batchByChars(items, cap) {
+  const batches = [];
+  let cur = [];
+  let size = 0;
+  for (const item of items) {
+    if (cur.length && size + item.length > cap) {
+      batches.push(cur);
+      cur = [];
+      size = 0;
+    }
+    cur.push(item);
+    size += item.length + 2; // the blank line joined between lists
+  }
+  if (cur.length) batches.push(cur);
+  return batches;
+}
 
 export function createAutoNotes({
   getTranscriptText,
@@ -62,6 +109,7 @@ export function createAutoNotes({
       const soFar = () => (content ? content + '\n' : '') + acc;
       await chatStream({
         model: cfg.ollamaModel,
+        numCtx: NUM_CTX,
         messages: autoNotesMessages({
           existing: content,
           // the user's manual notes as context — new bullets must not
@@ -100,8 +148,11 @@ export function createAutoNotes({
 
   /**
    * Full rebuild: the ENTIRE transcript is re-summarized from scratch and the
-   * accumulated bullets are replaced. The old content stays until the new set
-   * is ready — a failed rebuild never blanks the panel.
+   * accumulated bullets are replaced. A transcript longer than one map chunk
+   * goes through map-reduce: each chunk is distilled to bullets ("map"), then
+   * the per-part lists are merged in rounds until one set remains ("reduce").
+   * The old content stays until the new set is ready — a failed rebuild never
+   * blanks the panel.
    */
   async function doRebuild() {
     const cfg = getConfig();
@@ -109,31 +160,103 @@ export function createAutoNotes({
     const transcript = getTranscriptText();
     if (!transcript.trim()) return;
     running = true;
-    console.log(`[autonotes] rebuild started (${transcript.length} transcript chars)`);
+    const chunks = chunkTranscript(transcript);
+    console.log(
+      `[autonotes] rebuild started (${transcript.length} transcript chars, ${chunks.length} part${chunks.length === 1 ? '' : 's'})`
+    );
     broadcast({ t: 'autonotes-busy', busy: true });
     try {
-      let acc = '';
-      let lastSent = 0;
       const prev = content;
-      await chatStream({
-        model: cfg.ollamaModel,
-        messages: rebuildAutoNotesMessages({
-          transcript: transcript.slice(-MAX_REBUILD_MATERIAL),
-          manualNotes: getNotesDoc(),
-          profileCtx: getProfileContext(),
-        }),
-        onToken: (tok) => {
-          acc += tok;
+      let lastSent = 0;
+      // Streams the candidate replacement into the panel as it builds. The
+      // prefix carries what earlier stages already produced, so a long
+      // map-reduce rebuild shows accumulated progress instead of every stage
+      // starting from a blank panel.
+      const onToken = (prefix) => {
+        let local = prefix;
+        let last = 0;
+        return (tok) => {
+          local += tok;
           updatedAt = new Date().toTimeString().slice(0, 5);
-          // stream the candidate replacement into the panel as it builds
           const now = Date.now();
           if (now - lastSent > 300) {
             lastSent = now;
-            broadcast({ t: 'autonotes', content: acc, updated: updatedAt });
+            last = now;
+            broadcast({ t: 'autonotes', content: local, updated: updatedAt });
           }
-        },
-      });
-      const fresh = acc.trim();
+        };
+      };
+      let parts = [];
+      if (chunks.length === 1) {
+        // Short session: one prompt, as before — the single-shot prompt
+        // produces a better-shaped set than extract-then-merge.
+        parts = [
+          await chatStream({
+            model: cfg.ollamaModel,
+            numCtx: NUM_CTX,
+            messages: rebuildAutoNotesMessages({
+              transcript: chunks[0],
+              manualNotes: getNotesDoc(),
+              profileCtx: getProfileContext(),
+            }),
+            onToken: onToken(''),
+          }),
+        ];
+      } else {
+        // Map: distill each chunk to bullets. Chunk-scoped prompts keep the
+        // model's effective context small regardless of session length.
+        for (let i = 0; i < chunks.length; i++) {
+          const part = (
+            await chatStream({
+              model: cfg.ollamaModel,
+              numCtx: NUM_CTX,
+              messages: mapAutoNotesMessages({
+                chunk: chunks[i],
+                index: i + 1,
+                total: chunks.length,
+                profileCtx: getProfileContext(),
+              }),
+              onToken: onToken(parts.join('\n')),
+            })
+          ).trim();
+          if (part) parts.push(part);
+          console.log(`[autonotes] rebuild: part ${i + 1}/${chunks.length} -> ${part.length} chars of bullets`);
+          broadcast({ t: 'autonotes', content: parts.join('\n'), updated: updatedAt });
+        }
+        // Reduce: merge rounds over batches, each batch bounded by chars so
+        // the merge prompt itself can never overflow. A merge that comes back
+        // empty keeps its inputs rather than losing them.
+        while (parts.length > 1) {
+          const before = parts.length;
+          const next = [];
+          for (const batch of batchByChars(parts, MERGE_INPUT_CHARS)) {
+            if (batch.length === 1) {
+              next.push(batch[0]);
+              continue;
+            }
+            const merged = (
+              await chatStream({
+                model: cfg.ollamaModel,
+                numCtx: NUM_CTX,
+                messages: mergeAutoNotesMessages({
+                  partials: batch,
+                  manualNotes: getNotesDoc(),
+                  profileCtx: getProfileContext(),
+                }),
+                onToken: onToken(next.join('\n')),
+              })
+            ).trim();
+            next.push(merged || batch.join('\n'));
+          }
+          // every batch was a singleton (or every merge came back empty) —
+          // nothing more to merge, so don't spin forever
+          if (next.length === before) break;
+          parts = next;
+          broadcast({ t: 'autonotes', content: parts.join('\n'), updated: updatedAt });
+          console.log(`[autonotes] rebuild: merged down to ${parts.length} set(s)`);
+        }
+      }
+      const fresh = parts.join('\n').trim();
       // only replace on success — an empty reply keeps the previous bullets
       if (fresh) {
         content = fresh;

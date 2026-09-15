@@ -24,7 +24,7 @@ export async function listModels() {
  * propagates to the caller, and the feature's busy state clears so the next
  * attempt can run.
  */
-export async function chatStream({ model, messages, onToken, signal, timeoutMs = 300_000 }) {
+export async function chatStream({ model, messages, onToken, signal, timeoutMs = 300_000, numCtx }) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(new Error(`Ollama did not answer within ${Math.round(timeoutMs / 1000)}s`)), timeoutMs);
   if (signal) signal.addEventListener('abort', () => ctrl.abort(signal.reason), { once: true });
@@ -32,7 +32,18 @@ export async function chatStream({ model, messages, onToken, signal, timeoutMs =
     const res = await fetch(`${OLLAMA_URL}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, messages, stream: true, options: { num_thread: OLLAMA_THREADS } }),
+      body: JSON.stringify({
+        model,
+        messages,
+        stream: true,
+        options: {
+          num_thread: OLLAMA_THREADS,
+          // Ollama answers an overflowing prompt by silently truncating its
+          // head — no error ever reaches us. Callers that pack large prompts
+          // must raise num_ctx above the ~4096-token default themselves.
+          ...(numCtx ? { num_ctx: numCtx } : {}),
+        },
+      }),
       signal: ctrl.signal,
     });
     if (!res.ok) {
@@ -133,8 +144,10 @@ export const COMMANDS = {
 };
 
 /**
- * Prompt for a full rebuild of the auto-notes: the ENTIRE session transcript
- * goes in and the accumulated bullets are replaced by a fresh, complete set.
+ * Prompt for a full rebuild of the auto-notes when the session transcript fits
+ * one prompt (see MAP_CHUNK_CHARS in autonotes.js — longer sessions go through
+ * mapAutoNotesMessages + mergeAutoNotesMessages instead). The accumulated
+ * bullets are replaced by a fresh, complete set.
  */
 export function rebuildAutoNotesMessages({ transcript, manualNotes, profileCtx }) {
   const manualForPrompt = manualNotes && manualNotes.length > 6000 ? manualNotes.slice(-6000) : manualNotes;
@@ -148,6 +161,49 @@ export function rebuildAutoNotesMessages({ transcript, manualNotes, profileCtx }
     {
       role: 'user',
       content: `Rest of the user's notes document (context — never duplicate what is here):\n\n${manualForPrompt?.trim() || '(nothing yet)'}\n\nFULL session transcript:\n\n${transcript}\n\nComplete Live notes bullet set:`,
+    },
+  ];
+}
+
+/**
+ * Map step of a long-transcript rebuild: extract bullets from ONE chunk of the
+ * session. The transcript is split into chunks that each fit the context
+ * window, so this prompt stays small no matter how long the session ran.
+ * Dedup across chunks happens later, in mergeAutoNotesMessages.
+ */
+export function mapAutoNotesMessages({ chunk, index, total, profileCtx }) {
+  const base =
+    'You are a note-taking assistant embedded in a live transcription app. You are given one part of a longer session transcript, split to fit the model context. Extract the key information from THIS part only as markdown bullet points — facts, decisions, action items, open questions. One bullet per point, no headings, no preamble. A later merge step deduplicates across parts, so do not summarize details away — keep every distinct fact, decision, task, and open question you find. If this part adds nothing of value, output nothing at all.';
+  return [
+    {
+      role: 'system',
+      content: profileCtx ? `${base}\n\nSession context:\n${profileCtx}` : base,
+    },
+    {
+      role: 'user',
+      content: `Part ${index} of ${total} of the session transcript:\n\n${chunk}\n\nBullet points for this part (or nothing):`,
+    },
+  ];
+}
+
+/**
+ * Reduce step: merge the per-part bullet lists into one deduplicated set
+ * covering the whole session. It runs in rounds over batches of lists, so the
+ * merge prompt itself never overflows the context window, whatever the model
+ * produces.
+ */
+export function mergeAutoNotesMessages({ partials, manualNotes, profileCtx }) {
+  const manualForPrompt = manualNotes && manualNotes.length > 6000 ? manualNotes.slice(-6000) : manualNotes;
+  const base =
+    'You are a note-taking assistant embedded in a live transcription app. You are given bullet lists extracted from consecutive parts of ONE session transcript, in order. Merge them into a single markdown bullet-point set covering the whole session: keep every distinct fact, decision, action item, and open question; drop duplicates, reworded repeats, and filler; keep related bullets in a sensible order. Never drop information that appears in only one list. Never output headings, preamble, or explanations. Output ONLY the merged bullet points.';
+  return [
+    {
+      role: 'system',
+      content: profileCtx ? `${base}\n\nSession context:\n${profileCtx}` : base,
+    },
+    {
+      role: 'user',
+      content: `Rest of the user's notes document (context — never duplicate what is here):\n\n${manualForPrompt?.trim() || '(nothing yet)'}\n\nIntermediate bullet lists, in transcript order:\n\n${partials.join('\n\n')}\n\nMerged Live notes bullet set:`,
     },
   ];
 }
