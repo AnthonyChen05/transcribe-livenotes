@@ -1,5 +1,7 @@
 # 🎙 Live Notes
 
+**English** | [繁體中文](README.zh-TW.md)
+
 **Local-first live transcription + AI-assisted markdown notes.** Speak on the left, take notes on the right — fully offline, nothing leaves your machine.
 
 - 🗂 **Multi-note dashboard** — every note gets its own page at `/<name>`; the dashboard at `/` lists them all (rename/delete in place). Each note keeps its own transcript, notes document, AI bullets, auto-notes toggle and active profile.
