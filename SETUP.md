@@ -4,18 +4,24 @@ A fully local, offline web app: live speech-to-text on the left, an AI-assisted 
 Every note is its own page at `/<name>` — the dashboard at `/` organizes them all.
 Transcription runs through **whisper.cpp**, text processing through **Ollama**. Nothing leaves your machine.
 
+A fresh install takes about **10 minutes** plus download time. Work through the steps in order — each one ends with a command that verifies it worked.
+
 ---
 
-## 1. Prerequisites
+## Requirements
 
-| Requirement | Check | Notes |
+| Requirement | Details & download | Verify |
 |---|---|---|
-| **Node.js ≥ 20** | `node --version` | Tested on Node 25 |
-| **Ollama** installed & running | `curl http://localhost:11434/api/tags` | [ollama.com/download](https://ollama.com/download) |
-| At least one Ollama model | `ollama list` | See model advice below |
-| A microphone | — | Windows will prompt for permission |
+| **Windows 10/11 x64** | The supported path — `npm run setup` downloads prebuilt Windows x64 whisper.cpp binaries. On Linux/macOS you must build whisper-server from source into `./bin`. | — |
+| **Node.js ≥ 20** | Runs the server and dev tooling. Install the current **LTS** from **[nodejs.org/en/download](https://nodejs.org/en/download)** (tested up to Node 25). | `node --version` |
+| **Ollama** | The local LLM runtime behind summaries, action items, polish and live notes. Install from **[ollama.com/download](https://ollama.com/download)** — the Windows installer also starts the background service. | `ollama --version` |
+| **One Ollama model** | Pulled after Ollama is installed — see [Step 3](#step-3--pull-an-ollama-model). Recommended: `qwen2.5:3b` (~1.9 GB). Full catalog: [ollama.com/library](https://ollama.com/library). | `ollama list` |
+| **A microphone** | Built-in or USB. The browser asks for permission the first time you record. | — |
+| **Disk space** | ~1 GB for `node_modules` + whisper binaries (~8 MB) + the default Whisper model (57 MB) — plus your Ollama model (~2 GB for a 3B model). | — |
+| **RAM** | 8 GB recommended — whisper and Ollama share the CPU during live sessions. | — |
+| **Internet** | Only needed for the one-time downloads. Once everything is installed the app is fully offline — the only network calls are to `localhost`. | — |
 
-One command verifies all of these at once — **`npm run check`** (it also runs automatically before every `npm run dev` / `npm start`).
+One command verifies most of this at once: **`npm run check`** (it also runs automatically before every `npm run dev` / `npm run start`).
 
 ### Which Ollama model?
 
@@ -30,45 +36,114 @@ Everything runs on **CPU unless you have an NVIDIA GPU**. Model size directly de
 `gemma3:12b` works on CPU too, but expect a summary of a long meeting to take a minute or more.
 You can switch models anytime from the dropdown in the app's notes footer.
 
-## 2. Install & download assets
+## Step-by-step setup
+
+### Step 1 — Install Node.js
+
+1. Download the **LTS** `.msi` for Windows x64 from <https://nodejs.org/en/download>.
+2. Run the installer — the default options are fine (this adds `node` and `npm` to your PATH).
+3. Open a **new** terminal (so the PATH change applies) and verify:
 
 ```bash
-npm install
-npm run setup
+node --version      # v20.x or newer
+npm --version
 ```
 
-`npm run setup` is a one-time step that downloads (skipped automatically if already present):
+### Step 2 — Install Ollama
 
-- **whisper.cpp** prebuilt Windows x64 binaries (~8 MB) → `bin/whisper-server.exe`
-- **Whisper model** `ggml-base.en-q5_1.bin` (~57 MB) → `models/`
-
-Want a different / multilingual Whisper model? Any file from
-[huggingface.co/ggerganov/whisper.cpp](https://huggingface.co/ggerganov/whisper.cpp/tree/main) works:
+1. Download the Windows installer from <https://ollama.com/download> and run it.
+2. It installs Ollama and starts it in the background (you get a tray icon). Verify it's alive: open **<http://localhost:11434>** in a browser — you should see *"Ollama is running"*. Or from a terminal:
 
 ```bash
-WHISPER_MODEL=ggml-small.en-q5_1.bin npm run setup   # more accurate, slower
-WHISPER_MODEL=ggml-base-q5_1.bin npm run setup        # multilingual (non-English speech)
+ollama --version
 ```
 
-Good default: `tiny.en-q5_1` = fastest, `base.en-q5_1` = balanced (default), `small.en-q5_1` = most accurate.
-
-`npm run setup` finishes by running the built-in **setup check** — and the same check runs automatically before every `npm run dev` / `npm start`, so a broken install stops early with the exact fix instead of a confusing "whisper offline" pill:
-
-```bash
-npm run check
-```
-
-It verifies Node, the whisper binary, which model the server will pick, Ollama and its models, a writable `data/` directory, and that the ports are free — each ✗ row comes with its own `fix:` line. If Live Notes is already running, the check says so instead of letting a second instance crash into the first.
-
-## 3. Start Ollama
-
-Ollama usually runs in the background automatically after install. If not:
+If it's not running (e.g. after a reboot with autostart disabled):
 
 ```bash
 ollama serve
 ```
 
-## 4. Run the app
+### Step 3 — Pull an Ollama model
+
+```bash
+ollama pull qwen2.5:3b
+```
+
+A one-time ~1.9 GB download; alternatives are in the model table above. Verify:
+
+```bash
+ollama list         # should show qwen2.5:3b
+```
+
+### Step 4 — Get the code
+
+With Git ([git-scm.com/download/win](https://git-scm.com/download/win)):
+
+```bash
+git clone https://github.com/AnthonyChen05/transcribe-livenotes.git
+cd transcribe-livenotes
+```
+
+Without Git: on the GitHub repo page click **Code → Download ZIP**, extract it, then open a terminal inside the extracted folder. All following commands run from the project root.
+
+### Step 5 — Install dependencies
+
+```bash
+npm install
+```
+
+Downloads `node_modules` (React, Vite, Express, ws — a minute or two on a normal connection).
+
+### Step 6 — Download the transcription assets
+
+```bash
+npm run setup
+```
+
+A one-time step (safe to re-run — existing files are skipped) that downloads:
+
+- **whisper.cpp** prebuilt Windows x64 binaries (~8 MB) → `bin/whisper-server.exe`
+- the **Whisper model** `ggml-base.en-q5_1.bin` (57 MB) → `models/`
+
+Want a different, multilingual or more accurate Whisper model? Any file from
+[huggingface.co/ggerganov/whisper.cpp](https://huggingface.co/ggerganov/whisper.cpp/tree/main) works:
+
+```powershell
+npm run setup -- ggml-large-v3-turbo-q5_0.bin   # recommended upgrade — see "Better transcription quality"
+npm run setup -- ggml-base-q5_1.bin             # multilingual (for non-English speech)
+```
+
+Rough guide: `tiny.en-q5_1` = fastest, `base.en-q5_1` = balanced (the default), `small.en-q5_1` = most accurate.
+
+### Step 7 — Run the setup check
+
+```bash
+npm run check
+```
+
+`npm run setup` already ran this for you at the end — here's what it confirms:
+
+| Check | Confirms | If it fails |
+|---|---|---|
+| Node.js | v20 or newer | ✗ — install from nodejs.org |
+| Platform | Windows x64, matching the prebuilt binaries | ⚠ warning on other systems |
+| whisper.cpp | `bin/whisper-server.exe` present | ✗ — run `npm run setup` |
+| Whisper model | the exact model file the server will pick | ✗ — run `npm run setup` |
+| Ollama | reachable at `127.0.0.1:11434` | ⚠ AI features disabled until fixed |
+| Ollama models | at least one pulled | ⚠ — `ollama pull qwen2.5:3b` |
+| Data directory | `data/` is writable | ✗ — check folder permissions |
+| Ports | 3001 (app) and 5173 (dev) are free | ✗ — stop the other process, or change `PORT` |
+
+Every ✗ / ⚠ row prints its own `fix:` line with the exact command. The check also runs automatically before every `npm run dev` / `npm run start` (npm's `predev` / `prestart` hooks), so a broken install stops early with instructions instead of a confusing **whisper offline** pill. If Live Notes is already running, the check tells you where instead of letting a second instance crash into the first.
+
+When everything is in place you'll see:
+
+```
+✓ Everything is in place — start the app with:  npm run dev
+```
+
+### Step 8 — Start the app
 
 **Development** (Vite dev server + hot reload):
 
@@ -86,7 +161,11 @@ npm start
 
 → open **http://127.0.0.1:3001**
 
-## 5. First run
+That's the whole setup — continue with **[First run](#first-run)** below for a tour of the UI, or jump straight to **[Troubleshooting](#troubleshooting)** if anything misbehaves.
+
+---
+
+## First run
 
 1. You land on the **dashboard** — all your notes, most recently used first. Type a name and click **+ Create note** to start a new one; that opens the note's own page (`/economics-lecture-3`, say), where all of the below happens. Renaming and deleting happens on the dashboard cards. Typing a note's URL directly opens a one-click "create it?" page if it doesn't exist yet.
 2. Click **● Record** and allow microphone access.
@@ -117,7 +196,7 @@ Settings are split: the **Ollama model choice** lives in `data/config.json` (glo
 
 ### Better transcription quality
 
-The default model, `ggml-base.en-q5_1.bin` (59 MB), is the smallest practical one — fast, but it mishears accents and domain terms (your Ollama profile's accent notes help the AI catch those, but better input is better). To upgrade, download a larger model and restart `npm run dev`:
+The default model, `ggml-base.en-q5_1.bin` (57 MB), is the smallest practical one — fast, but it mishears accents and domain terms (your Ollama profile's accent notes help the AI catch those, but better input is better). To upgrade, download a larger model and restart `npm run dev`:
 
 ```powershell
 npm run setup -- ggml-large-v3-turbo-q5_0.bin
