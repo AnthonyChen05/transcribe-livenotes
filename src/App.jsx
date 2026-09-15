@@ -495,10 +495,15 @@ function SessionApp({ slug, initialTitle }) {
         </div>
       )}
 
+      {/* The whole column list (left pane / divider / right pane) goes to CSS
+          as one custom property. It can't be inline grid-template-columns —
+          inline beats every stylesheet rule, including the narrow-window
+          stacked layout. And the fr math stays in JSX: calc(<number> * 1fr)
+          is invalid in browsers, so the whole declaration gets dropped. */}
       <main
         className="split"
         ref={splitRef}
-        style={{ gridTemplateColumns: `${splitPct}fr 6px ${100 - splitPct}fr` }}
+        style={{ '--split-cols': `${splitPct}fr 6px ${100 - splitPct}fr` }}
       >
         {autoNotes.busy && (
           <div

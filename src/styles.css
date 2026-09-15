@@ -51,6 +51,7 @@ body {
 .topbar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   padding: 10px 16px;
   background: var(--surface);
@@ -164,11 +165,16 @@ body {
 }
 
 /* ---------------------------------------------------------------- panes */
+/* The app sets the full column list inline as --split-cols (divider drag)
+   and it's consumed here, so the narrow-window media query below can still
+   override it through the cascade. The fr math lives in JSX on purpose:
+   multiplying 1fr inside calc() is invalid in browsers, which dropped the
+   entire declaration and left the grid as a single stacked column. */
 .split {
   position: relative;
   flex: 1;
   display: grid;
-  grid-template-columns: 1fr 1fr; /* replaced at runtime: left% / divider / right% */
+  grid-template-columns: var(--split-cols, 1fr 6px 1fr);
   min-height: 0;
 }
 
@@ -247,10 +253,6 @@ body.split-dragging {
   min-width: 0;
   min-height: 0;
   background: var(--surface);
-}
-
-.pane + .pane {
-  border-left: 1px solid var(--hairline);
 }
 
 .pane-header {
@@ -341,7 +343,8 @@ body.split-dragging {
 .pane-footer {
   display: flex;
   align-items: center;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 6px 10px;
   padding: 6px 14px;
   border-top: 1px solid var(--hairline-soft);
   font-size: 12px;
@@ -582,13 +585,20 @@ body.split-dragging {
   padding: 0 4px;
 }
 
+/* Narrow windows stack the panes: transcript on top, notes below. The drag
+   divider is hidden (the panes fill the full height) and a hairline separates
+   them instead. */
 @media (max-width: 900px) {
   .split {
     grid-template-columns: 1fr;
     grid-template-rows: 1fr 1fr;
   }
 
-  .pane + .pane {
+  .split-divider {
+    display: none;
+  }
+
+  .split > .pane:last-child {
     border-left: 0;
     border-top: 1px solid var(--hairline);
   }
