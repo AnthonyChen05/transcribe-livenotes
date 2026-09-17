@@ -83,7 +83,7 @@ ollama list         # should show qwen2.5:3b
 With Git ([git-scm.com/download/win](https://git-scm.com/download/win)):
 
 ```bash
-git clone https://github.com/AnthonyChen05/transcribe-livenotes.git
+git clone https://github.com/SynesisLab/transcribe-livenotes.git
 cd transcribe-livenotes
 ```
 
